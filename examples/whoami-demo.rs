@@ -3,7 +3,7 @@ fn main() {
     println!();
     println!(
         "User's Language        whoami::langs():               {}",
-        whoami::langs()
+        whoami::langs(Some(false))
             .map(|l| {
                 l.map(|l| l.to_string()).collect::<Vec<String>>().join(", ")
             })

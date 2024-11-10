@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::{collections::BTreeSet, ffi::OsString};
 
 use crate::{
     fallible,
@@ -148,7 +148,7 @@ pub fn platform() -> Platform {
 #[inline(always)]
 #[deprecated(note = "use `langs()` instead", since = "1.5.0")]
 pub fn lang() -> impl Iterator<Item = String> {
-    let langs_vec = if let Ok(langs) = langs() {
+    let langs_vec = if let Ok(langs) = langs(Some(false)) {
         langs
             .map(|lang| lang.to_string().replace('/', "-"))
             .collect()
@@ -165,25 +165,45 @@ pub fn lang() -> impl Iterator<Item = String> {
 /// returned first, followed by next preferred, and so on.  Unrecognized
 /// languages may either return an error or be skipped.
 #[inline(always)]
-pub fn langs() -> Result<impl Iterator<Item = Language>> {
-    // FIXME: Could do less allocation
+pub fn langs(fallback: Option<bool>) -> Result<impl Iterator<Item = Language>> {
+
     let langs = Target::langs(Os)?;
-    let langs = langs
-        .split(';')
-        .map(ToString::to_string)
+
+    let separator = if langs.contains(':') { ':' } else if langs.contains(';') { ';' } else { ',' };
+
+    let mut lang_vec: Vec<Language> = langs
+        .split(separator)
         .filter_map(|lang| {
             let lang = lang
                 .split_terminator('.')
                 .next()
                 .unwrap_or_default()
-                .replace(|x| ['_', '-'].contains(&x), "/");
+                .replace(['_', '-'], "/");
 
             if lang == "C" {
                 return None;
             }
 
             Some(Language::__(Box::new(lang)))
-        });
+        })
+        .collect();
+    let fallback = fallback.unwrap_or(true);
+    if fallback {
+        let mut short_langs = BTreeSet::new();
 
-    Ok(langs.collect::<Vec<_>>().into_iter())
+    for lang in &lang_vec {
+        if let Some(short) = lang.to_string().split('/').next() {
+            short_langs.insert(short.to_string());
+        }
+    }
+
+    for shorted in short_langs {
+        if !lang_vec.iter().any(|lang| lang.to_string() == shorted) {
+            lang_vec.push(Language::__(Box::new(shorted)));
+        }
+    }
+    }
+    
+
+    Ok(lang_vec.into_iter())
 }
